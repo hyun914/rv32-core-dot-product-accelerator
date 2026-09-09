@@ -38,12 +38,12 @@ Configuration 2 adds the lower-32-bit `MUL` operation as a multiplication-enable
 
 | # | Directory | Processor / accelerator | Integration | Multipliers | Folding factor | Compute pulses | Top module |
 |---:|---|---|---|---:|---:|---:|---|
-| 1 | `1_rv32i_base/` | Base processor | None | 0 | - | - | `core` |
-| 2 | `2_rv32i_mul/` | Base processor + hardware `MUL` | Standard R-type `MUL` | 1 | - | - | `core` |
-| 3 | `3_accel_8mul/` | Parallel dot-product accelerator | Custom-0 | 8 | 1 | 1 | `core` |
-| 4 | `4_fold_4mul/` | Folded dot-product accelerator | Custom-0 | 4 | 2 | 2 | `core` |
-| 5 | `5_mac_1mul/` | Fully folded MAC accelerator | Custom-0 | 1 | 8 | 8 | `core` |
-| 6 | `6_mmio_8mul/` | Parallel dot-product accelerator | MMIO | 8 | 1 | 1 | `core_mmio_top` |
+| 1 | `rtl/1_rv32i_base/` | Base processor | None | 0 | - | - | `core` |
+| 2 | `rtl/2_rv32i_mul/` | Base processor + hardware `MUL` | Standard R-type `MUL` | 1 | - | - | `core` |
+| 3 | `rtl/3_accel_8mul/` | Parallel dot-product accelerator | Custom-0 | 8 | 1 | 1 | `core` |
+| 4 | `rtl/4_fold_4mul/` | Folded dot-product accelerator | Custom-0 | 4 | 2 | 2 | `core` |
+| 5 | `rtl/5_mac_1mul/` | Fully folded MAC accelerator | Custom-0 | 1 | 8 | 8 | `core` |
+| 6 | `rtl/6_mmio_8mul/` | Parallel dot-product accelerator | MMIO | 8 | 1 | 1 | `core_mmio_top` |
 
 Each directory is a self-contained source snapshot. Select one directory, read all of its `.v` files, and use the top module listed above or in its `TOP.txt` file.
 
@@ -130,14 +130,14 @@ All configurations expose the same instruction- and data-memory ports; configura
 For a syntax/elaboration check with Icarus Verilog, select one configuration and its corresponding top module. For example:
 
 ```sh
-iverilog -g2012 -tnull -s core 3_accel_8mul/*.v
-iverilog -g2012 -tnull -s core_mmio_top 6_mmio_8mul/*.v
+iverilog -g2012 -tnull -s core rtl/3_accel_8mul/*.v
+iverilog -g2012 -tnull -s core_mmio_top rtl/6_mmio_8mul/*.v
 ```
 
 For synthesis, read every `.v` file from exactly one configuration directory. A minimal Design Compiler source-loading example is:
 
 ```tcl
-set cfg_dir ./3_accel_8mul
+set cfg_dir ./rtl/3_accel_8mul
 set top core
 
 analyze -format verilog [glob ${cfg_dir}/*.v]

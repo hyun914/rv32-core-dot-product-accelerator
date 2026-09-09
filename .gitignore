@@ -9,7 +9,7 @@
 *.log
 
 # Precompiled simulation artifact
-/0_core_orgin/midterm_sim
+/rtl/0_core_orgin/midterm_sim
 
 # Duplicate testbench
 /tb_core-2.v
