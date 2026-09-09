@@ -1,0 +1,2 @@
+TOP module = core
+Feed every .v in this folder to your synth tool. Set top = core. No defines.

@@ -1,0 +1,30 @@
+# Simulation outputs
+/build/
+*.vcd
+*.vvp
+*.fst
+*.lxt
+*.lxt2
+*.wlf
+*.log
+
+# Precompiled simulation artifact
+/0_core_orgin/midterm_sim
+
+# Duplicate testbench
+/tb_core-2.v
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Common EDA scratch directories
+work/
+xsim.dir/
+*.jou
+*.wdb

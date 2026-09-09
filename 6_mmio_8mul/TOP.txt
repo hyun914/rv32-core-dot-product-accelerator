@@ -1,0 +1,2 @@
+TOP module = core_mmio_top
+Feed every .v in this folder to your synth tool. Set top = core_mmio_top. No defines.
