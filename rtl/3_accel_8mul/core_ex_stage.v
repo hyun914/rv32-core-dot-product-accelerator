@@ -38,26 +38,6 @@ module core_ex_stage (
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     dot_product_8mul u_accel (
         .clk          (clk_i),
         .rst_n        (rst_ni),

@@ -1,19 +1,24 @@
 `timescale 1ns/1ps
+
+// WB stage: selects the value written back. Its outputs drive the register
+// file write port (ID) and are the MEM/WB forwarding source (EX).
+//   mem_to_reg_i == 2'b01 -> load data
+//   otherwise             -> result (ALU result, or PC+4 already selected in EX)
 module core_wb_stage (
-    input  [1:0]  mem_to_reg_i,     // 2'b00: ALU, 2'b01: MEM, 2'b10: PC+4
-    input  [31:0] dmem_rd_data_i,
-    input  [31:0] alu_result_i,
-    input  [31:0] pc_plus_4_i,
-    input  [31:0] imm_i,            // 호환용, 미사용
-    output reg [31:0] rd_din_o
+    // MEM/WB
+    input  [31:0] result_i,
+    input  [31:0] mem_rdata_i,
+    input  [4:0]  rd_i,
+    input         reg_write_i,
+    input  [1:0]  mem_to_reg_i,
+
+    output        wb_reg_write_o,
+    output [4:0]  wb_rd_o,
+    output [31:0] wb_write_data_o
 );
-always @(*) begin
-    case (mem_to_reg_i)
-        2'b00: rd_din_o = alu_result_i;     // ALU
-        2'b01,
-        2'b11: rd_din_o = dmem_rd_data_i;   // ★ MEM (인코딩 호환)
-        2'b10: rd_din_o = pc_plus_4_i;      // PC+4
-        default: rd_din_o = alu_result_i;   // 안전 기본값
-    endcase
-end
+
+    assign wb_reg_write_o  = reg_write_i;
+    assign wb_rd_o         = rd_i;
+    assign wb_write_data_o = (mem_to_reg_i == 2'b01) ? mem_rdata_i : result_i;
+
 endmodule

@@ -15,8 +15,10 @@ module dot_product_1mul (
     reg signed [7:0]  buf_b [0:7];
 
     reg [2:0]         fold_idx;
-    reg signed [19:0] partial_sum;
-    reg signed [31:0]        result_r;
+    reg signed [18:0] partial_sum;  // 8 products: [-130048, 131072] fits 19b signed
+    reg signed [18:0] result_r;     // sign-extended to 32b at result_o
+
+    
     integer i;
 
     wire signed [7:0] a_sel;
@@ -26,9 +28,9 @@ module dot_product_1mul (
 
     wire signed [15:0] product = a_sel * b_sel;
 
-    wire signed [19:0] final_sum = partial_sum + product;
-    
-    wire signed [19:0] partial_sum_w = (fold_idx == 3'd0) ? product : final_sum; // mux#2
+    wire signed [18:0] final_sum = partial_sum + product;
+
+    wire signed [18:0] partial_sum_w = (fold_idx == 3'd0) ? product : final_sum; // mux#2
     
     assign result_o = ((fold_idx == 3'b111) && (compute_en_i == 1'b1)) ? $signed(final_sum) : result_r; //mux#3
 
@@ -40,8 +42,8 @@ module dot_product_1mul (
                 buf_b[i] <= 8'sd0;
             end
             fold_idx     <= 3'b000;
-            partial_sum  <= 20'sd0;
-            result_r     <= 32'sd0;
+            partial_sum  <= 19'sd0;
+            result_r     <= 19'sd0;
         end else begin
             if (load_a_en_i) begin
                 if (load_idx_i == 1'b0) begin

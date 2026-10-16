@@ -34,8 +34,8 @@ module dot_product_4mul (
     reg signed [7:0]  buf_b [0:7];
 
     reg               fold_idx;        // 0: next compute is LO half, 1: HI half
-    reg signed [19:0] partial_sum;  // captured at end of LO compute
-    reg signed [31:0] result_r;     // captured at end of HI compute
+    reg signed [17:0] partial_sum;  // captured at end of LO compute
+    reg signed [18:0] result_r;     // captured at end of HI compute
 
     // 4 multipliers, operands selected by current fold_idx.
     wire signed [7:0] a_sel [0:3];
@@ -57,12 +57,12 @@ module dot_product_4mul (
         end
     endgenerate
 
-    wire signed [17:0] add_l1_0 = mul_res[0] + mul_res[1];
-    wire signed [17:0] add_l1_1 = mul_res[2] + mul_res[3];
-    wire signed [18:0] half_sum = add_l1_0 + add_l1_1;
+    wire signed [16:0] add_l1_0 = mul_res[0] + mul_res[1]; // tight optimiation
+    wire signed [16:0] add_l1_1 = mul_res[2] + mul_res[3];
+    wire signed [17:0] half_sum = add_l1_0 + add_l1_1;
 
     // On HI compute the combinational final_sum is (partial_sum + half_sum).
-    wire signed [19:0] final_sum = $signed(partial_sum) + $signed({{1{half_sum[18]}}, half_sum});
+    wire signed [18:0] final_sum = $signed({partial_sum[17], partial_sum}) + $signed({half_sum[17], half_sum});
 
     // Result is combinationally valid only during a HI-fold_idx compute pulse.
     // Otherwise expose the latched result_r (matches dot_product.v semantics).
@@ -76,8 +76,8 @@ module dot_product_4mul (
                 buf_b[i] <= 8'sd0;
             end
             fold_idx       <= 1'b0;
-            partial_sum <= 20'sd0;
-            result_r    <= 32'sd0;
+            partial_sum <= 18'sd0; // 18 bit
+            result_r    <= 19'sd0; // 19 bit
         end else begin
             if (load_a_en_i) begin
                 if (load_idx_i == 1'b0) begin

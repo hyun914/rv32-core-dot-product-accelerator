@@ -4,28 +4,33 @@ module core (
     input  clk_i,
     input  rst_ni,
     // IMEM
-    input       [31:0] imem_rd_data_i,
-    output wire [31:0] imem_addr_o,
+    input       [31:0] imem_rd_data_i, //동기 (주소 낸 다음 사이클에 도착)
+    output wire [31:0] imem_addr_o,    
     output wire        imem_read_o,
     // DMEM
     input       [31:0] dmem_rd_data_i,
-    output wire [31:0] dmem_addr_o,
-    output wire        dmem_read_o,
+    output wire [31:0] dmem_addr_o, // ld/store address
+    output wire        dmem_read_o, 
     output wire        dmem_write_o,
     output wire [31:0] dmem_wr_data_o
 );
 
-    localparam ASYNC_DMEM_RD = 1'b1;
+
+/*
+DMEM-RD를 Combinational Logic으로 가정한다.
+Load-use 처리 단계에서 쓰일 정보.
+*/
 
     // -------------------------------------------------------------------------
     // Pipeline registers (declare before hazard / forwarding references)
     // -------------------------------------------------------------------------
-    // IF stage internals (PC, pc_fetch_reg, squash_fetch) and the IF/ID
-    // pipeline register live inside `core_if_stage`. We only need their outputs
-    // here.
+
+
+    // IF/ID register는 IF stage 안에 있다.
     wire [31:0] if_id_pc;
     wire [31:0] if_id_instr;
-
+    // ID/EX : 
+    // DATA(PC, rs1/rs2, imm), 레지스터 번호 (rs1/rs2/rd), opcode/func3,7, 제어비트
     reg [31:0] id_ex_pc;
     reg [31:0] id_ex_rs1_data;
     reg [31:0] id_ex_rs2_data;
@@ -37,13 +42,17 @@ module core (
     reg [2:0]  id_ex_funct3;
     reg [6:0]  id_ex_funct7;
     reg        id_ex_reg_write;
-    reg [1:0]  id_ex_mem_to_reg;
+    reg [1:0]  id_ex_mem_to_reg; 
     reg        id_ex_mem_read;
     reg        id_ex_mem_write;
 
+
+
+    // PC, ALU 결과(load/store면 주소), store 데이터, rd, 제어비트를 담는다.
     reg [31:0] ex_mem_pc;
     reg [31:0] ex_mem_alu_result;
     reg [31:0] ex_mem_store_data;
+
     reg [4:0]  ex_mem_rd;
     reg        ex_mem_reg_write;
     reg [1:0]  ex_mem_mem_to_reg;
@@ -116,9 +125,11 @@ module core (
     wire wb_bypass_rs1 = wb_reg_write_eff && (wb_rd_eff != 5'd0) && (wb_rd_eff == id_rs1);
     wire wb_bypass_rs2 = wb_reg_write_eff && (wb_rd_eff != 5'd0) && (wb_rd_eff == id_rs2);
 
-    wire ex_mem_dmem_fwd_rs1 = ASYNC_DMEM_RD && ex_mem_mem_read && (ex_mem_rd != 5'b0)
+    // MEM->ID bypass: a load in EX/MEM has its data on dmem_rd_data_i this
+    // cycle, so the instruction in ID takes it directly into ID/EX.
+    wire ex_mem_dmem_fwd_rs1 = ex_mem_mem_read && (ex_mem_rd != 5'b0)
         && (ex_mem_rd == id_rs1);
-    wire ex_mem_dmem_fwd_rs2 = ASYNC_DMEM_RD && ex_mem_mem_read && (ex_mem_rd != 5'b0)
+    wire ex_mem_dmem_fwd_rs2 = ex_mem_mem_read && (ex_mem_rd != 5'b0)
         && (ex_mem_rd == id_rs2);
 
     wire [31:0] id_rs1_after_rf = id_rs1_data;
@@ -128,43 +139,15 @@ module core (
     wire [31:0] id_rs2_after_wb = wb_bypass_rs2 ? wb_write_data_eff : id_rs2_after_rf;
     wire [31:0] id_rs2_data_fix  = ex_mem_dmem_fwd_rs2 ? dmem_rd_data_i : id_rs2_after_wb;
 
-    // Load-use: stall IF/ID+PC until load result is reachable (MEM/WB bypass to ID)
-    // For LW in EX/MEM, clear stall when MEM/WB holds the completed load (same rd)
-    // and IF/ID still names that register (so WB→ID bypass supplies the operand).
-    wire mem_wb_holds_ex_mem_load =
-        ex_mem_mem_read && (ex_mem_rd != 5'b0)
-        && (mem_wb_mem_to_reg == 2'b01) && mem_wb_reg_write
-        && (mem_wb_rd == ex_mem_rd)
-        && ((ex_mem_rd == id_rs1) || (ex_mem_rd == id_rs2));
-
-    wire load_use_p1_base =
+    // Load-use: LW in EX (ID/EX) and the instruction in ID reads its rd.
+    // The load data only exists once the LW reaches MEM, so stall PC + IF/ID
+    // for one cycle and send a bubble into ID/EX. On the next cycle the LW is
+    // in EX/MEM and the MEM->ID bypass above supplies the operand.
+    wire load_use_hazard =
         id_ex_mem_read && (id_ex_rd != 5'b0)
         && ((id_ex_rd == id_rs1) || (id_ex_rd == id_rs2));
-    // With async DMEM, the LW in EX/MEM is the same instruction as the LW still
-    // registered in ID/EX (same rd); dmem_rd_data_i + MEM→ID bypass feeds IF/ID.
-    wire load_use_p1_clear_async =
-        ASYNC_DMEM_RD && ex_mem_mem_read && (ex_mem_rd != 5'b0)
-        && (ex_mem_rd == id_ex_rd);
-    wire load_use_p1 = load_use_p1_base && !load_use_p1_clear_async;
 
-    wire load_use_hazard =
-        load_use_p1
-        || (!ASYNC_DMEM_RD && ex_mem_mem_read && (ex_mem_rd != 5'b0)
-            && ((ex_mem_rd == id_rs1) || (ex_mem_rd == id_rs2))
-            && !mem_wb_holds_ex_mem_load);
-
-    wire load_ex_mem_raw_hazard =
-        ex_mem_mem_read && (ex_mem_rd != 5'b0)
-        && ((ex_mem_rd == id_ex_rs1_addr) || (ex_mem_rd == id_ex_rs2_addr));
-
-    wire stall = load_use_hazard || load_ex_mem_raw_hazard;
-
-    // IF/ID waits on a load still in EX/MEM (MEM-stage RAW): do not freeze EX/MEM
-    // while ID/EX is a bubble — that traps the LW in EX/MEM forever with no way
-    // for mem_wb_holds to ever latch the completed load.
-    wire load_use_part2_ifid =
-        ex_mem_mem_read && (ex_mem_rd != 5'b0)
-        && ((ex_mem_rd == id_rs1) || (ex_mem_rd == id_rs2));
+    wire stall = load_use_hazard;
 
     // -------------------------------------------------------------------------
     // IF Stage (PC, IMEM addr, IF/ID register all encapsulated)
@@ -189,10 +172,10 @@ module core (
     // -------------------------------------------------------------------------
     // ID/EX Pipeline Register
     // -------------------------------------------------------------------------
-    // Do not bubble ID/EX when it holds an LW that IF/ID is waiting on (load-use
-    // part 1). Bubbling would NOP out the second LW before it reaches EX/MEM,
-    // breaking patterns like LW; LW; BLT (tb_core bubble sort).
-    wire id_ex_bubble = branch_taken || (load_use_hazard && !id_ex_mem_read);
+    // Bubble ID/EX on a taken branch (flush) or a load-use stall. The LW itself
+    // has already moved on to EX/MEM, so the bubble only replaces the stalled
+    // instruction's slot.
+    wire id_ex_bubble = branch_taken || load_use_hazard;
 
     always @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
@@ -210,39 +193,6 @@ module core (
             id_ex_mem_to_reg <= 2'b0;
             id_ex_mem_read   <= 1'b0;
             id_ex_mem_write  <= 1'b0;
-        end else if (stall && load_ex_mem_raw_hazard) begin
-            // LW in EX/MEM, dependent op in EX: hold ID/EX one cycle for MEM/WB bypass.
-            id_ex_pc         <= id_ex_pc;
-            id_ex_rs1_data   <= id_ex_rs1_data;
-            id_ex_rs2_data   <= id_ex_rs2_data;
-            id_ex_imm        <= id_ex_imm;
-            id_ex_rs1_addr   <= id_ex_rs1_addr;
-            id_ex_rs2_addr   <= id_ex_rs2_addr;
-            id_ex_rd         <= id_ex_rd;
-            id_ex_opcode     <= id_ex_opcode;
-            id_ex_funct3     <= id_ex_funct3;
-            id_ex_funct7     <= id_ex_funct7;
-            id_ex_reg_write  <= id_ex_reg_write;
-            id_ex_mem_to_reg <= id_ex_mem_to_reg;
-            id_ex_mem_read   <= id_ex_mem_read;
-            id_ex_mem_write  <= id_ex_mem_write;
-        end else if (stall && id_ex_mem_read && (id_ex_rd != 5'b0)
-                    && ((id_ex_rd == id_rs1) || (id_ex_rd == id_rs2))) begin
-            // Load-use part 1: hold LW in ID/EX while IF/ID waits (see id_ex_bubble).
-            id_ex_pc         <= id_ex_pc;
-            id_ex_rs1_data   <= id_ex_rs1_data;
-            id_ex_rs2_data   <= id_ex_rs2_data;
-            id_ex_imm        <= id_ex_imm;
-            id_ex_rs1_addr   <= id_ex_rs1_addr;
-            id_ex_rs2_addr   <= id_ex_rs2_addr;
-            id_ex_rd         <= id_ex_rd;
-            id_ex_opcode     <= id_ex_opcode;
-            id_ex_funct3     <= id_ex_funct3;
-            id_ex_funct7     <= id_ex_funct7;
-            id_ex_reg_write  <= id_ex_reg_write;
-            id_ex_mem_to_reg <= id_ex_mem_to_reg;
-            id_ex_mem_read   <= id_ex_mem_read;
-            id_ex_mem_write  <= id_ex_mem_write;
         end else if (id_ex_bubble) begin
             id_ex_pc         <= 32'b0;
             id_ex_rs1_data   <= 32'b0;
@@ -333,17 +283,8 @@ module core (
     // -------------------------------------------------------------------------
     // EX/MEM Pipeline Register
     // -------------------------------------------------------------------------
-    // Freeze EX/MEM only while stalling with LW already out of ID/EX (bubble there);
-    // first stall cycle must still shift LW from EX into EX/MEM
-    // Freeze EX/MEM only on classic load-use (ID/EX bubbled to NOP so EX/MEM still
-    // holds an LW). When load-use part 1 *holds* an LW in ID/EX, do NOT freeze —
-    // the LW already in EX/MEM must retire into MEM/WB.
-    wire load_use_part1_ifid =
-        id_ex_mem_read && (id_ex_rd != 5'b0)
-        && ((id_ex_rd == id_rs1) || (id_ex_rd == id_rs2));
-    wire freeze_ex_mem = stall && !id_ex_mem_read && !load_ex_mem_raw_hazard
-        && !load_use_part1_ifid && !load_use_part2_ifid;
-
+    // EX/MEM never stalls: on a load-use stall the LW moves on into EX/MEM
+    // while the bubble enters ID/EX behind it.
     always @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             ex_mem_pc         <= 32'b0;
@@ -354,7 +295,7 @@ module core (
             ex_mem_mem_to_reg <= 2'b0;
             ex_mem_mem_read   <= 1'b0;
             ex_mem_mem_write  <= 1'b0;
-        end else if (!freeze_ex_mem) begin
+        end else begin
             ex_mem_pc         <= id_ex_pc;
             ex_mem_alu_result <= ex_alu_result;
             ex_mem_store_data <= ex_rs2_val;

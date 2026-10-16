@@ -6,9 +6,9 @@
 //   - Drives synchronous IMEM (1-cycle latency)
 //   - Owns the IF/ID pipeline register (if_id_pc, if_id_instr)
 //
-// Behavior is identical to the inline IF logic that previously lived in core.v.
-// Stall (load-use hazard) freezes PC and IF/ID; branch_taken flushes IF/ID to
-// NOP (0x00000013) and squashes the in-flight fetch on the next cycle.
+// Stall (load-use hazard) freezes PC and IF/ID and re-issues the pending fetch
+// address so no instruction is dropped; branch_taken flushes IF/ID to NOP
+// (0x00000013) and squashes the in-flight fetch on the next cycle.
 // -----------------------------------------------------------------------------
 
 module core_if_stage (
@@ -55,7 +55,10 @@ module core_if_stage (
         end
     end
 
-    assign imem_addr_o = pc_reg;
+    // On a stall the word for pc_fetch_reg arrives while IF/ID is frozen, so it
+    // would be lost. Re-issue pc_fetch_reg to IMEM so the same word is
+    // delivered again in the cycle the stall releases.
+    assign imem_addr_o = stall_i ? pc_fetch_reg : pc_reg;
     assign imem_read_o = 1'b1;
 
     // IF/ID pipeline register
