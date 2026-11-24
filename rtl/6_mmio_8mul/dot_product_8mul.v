@@ -17,7 +17,8 @@ module dot_product_8mul (
     output wire [31:0] result_o
 );
 
-    reg [31:0] result_r;  // compute_en_i 시 클럭에 저장, 그 외에는 이전 값 유지
+    // signed여야 result_o의 ?: 식 전체가 signed가 되어 final_sum이 부호 확장된다
+    reg signed [31:0] result_r;  // compute_en_i 시 클럭에 저장, 그 외에는 이전 값 유지
 
     // 1. 내부 버퍼 선언 (Signed INT8, 오버플로우/음수 완벽 대응)
     reg signed [7:0] buf_a [0:7];
@@ -68,7 +69,7 @@ module dot_product_8mul (
                 buf_a[i] <= 8'sd0;
                 buf_b[i] <= 8'sd0;
             end
-            result_r <= 32'd0;
+            result_r <= 32'sd0;
         end else begin
             // Vector A 로드 (32비트 안에 8비트 4개가 패킹되어 들어옴)
             if (load_a_en_i) begin
